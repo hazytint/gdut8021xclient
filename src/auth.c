@@ -30,9 +30,9 @@ typedef enum {IDENTITY=1, NOTIFICATION=2, MD5=4, AVAILABLE=20} EAP_Type;
 typedef uint8_t EAP_ID;
 const uint8_t BroadcastAddr[6] = {0xff,0xff,0xff,0xff,0xff,0xff}; // 广播MAC地址
 const uint8_t MultcastAddr[6]  = {0x01,0x80,0xc2,0x00,0x00,0x03}; // 多播MAC地址
-const char H3C_VERSION[16]="CH V3.60-6303"; // 华为客户端版本号
-const char H3C_KEY[64]    ="HuaWei3COM1X";  // H3C的固定密钥
-//const char H3C_KEY[64]  ="Oly5D62FaE94W7";  // H3C的另一个固定密钥，网友取自MacOSX版本的iNode官方客户端
+const char H3C_VERSION[16]="CH\x10V3.60-6307"; // 华为客户端版本号
+//const char H3C_KEY[64]    ="HuaWei3COM1X";  // H3C的固定密钥
+const char H3C_KEY[64]  ="Oly5D62FaE94W7";  // H3C的另一个固定密钥，网友取自MacOSX版本的iNode官方客户端
 
 // 子函数声明
 static void SendStartPkt(pcap_t *adhandle, const uint8_t mac[]);
@@ -41,7 +41,8 @@ static void SendResponseIdentity(pcap_t *adhandle,
 			const uint8_t request[],
 			const uint8_t ethhdr[],
 			const uint8_t ip[4],
-			const char    username[]);
+            const char username[],
+            const uint8_t md5[]);
 static void SendResponseMD5(pcap_t *adhandle,
 		const uint8_t request[],
 		const uint8_t ethhdr[],
@@ -51,7 +52,8 @@ static void SendResponseAvailable(pcap_t *adhandle,
 		const uint8_t request[],
 		const uint8_t ethhdr[],
 		const uint8_t ip[4],
-		const char    username[]);
+		const char    username[],
+        const uint8_t md5[]);
 static void SendResponseNotification(pcap_t *handle,
 		const uint8_t request[],
 		const uint8_t ethhdr[]);
@@ -65,6 +67,8 @@ static void FillBase64Area(char area[]);
 extern void FillMD5Area(uint8_t digest[],
 	       	uint8_t id, const char passwd[], const uint8_t srcMD5[]);
 
+// From decrypt.c
+extern void DEStoMD5(uint8_t dest[],const uint8_t src[]);
 // From ip.c
 extern void GetIpFromDevice(uint8_t ip[4], const char DeviceName[]);
 
@@ -87,11 +91,11 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 	const int DefaultTimeout=60000;//设置接收超时参数，单位ms
 
 	// NOTE: 这里没有检查网线是否已插好,网线插口可能接触不良
-	
+
 	/* 打开适配器(网卡) */
 	adhandle = pcap_open_live(DeviceName,65536,1,DefaultTimeout,errbuf);
 	if (adhandle==NULL) {
-		fprintf(stderr, "%s\n", errbuf); 
+		fprintf(stderr, "%s\n", errbuf);
 		exit(-1);
 	}
 
@@ -116,6 +120,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		const uint8_t	*captured;
 		uint8_t	ethhdr[14]={0}; // ethernet header
 		uint8_t	ip[4]={0};	// ip address
+        uint8_t md5[32]={0}; // 心跳包3DES解密进行两次md5
 
 		/* 主动发起认证会话 */
 		SendStartPkt(adhandle, MAC);
@@ -162,9 +167,10 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		{	// 通常情况会收到包Request Identity，应回答Response Identity
 			DPRINTF("[%d] Server: Request Identity!\n", captured[19]);
 			GetIpFromDevice(ip, DeviceName);
-			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName);
+			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, md5);
 			DPRINTF("[%d] Client: Response Identity.\n", (EAP_ID)captured[19]);
 		}
+        /*
 		else if ((EAP_Type)captured[22] == AVAILABLE)
 		{	// 遇到AVAILABLE包时需要特殊处理
 			// 中南财经政法大学目前使用的格式：
@@ -174,10 +180,12 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 			SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName);
 			DPRINTF("[%d] Client: Response Identity.\n", (EAP_ID)captured[19]);
 		}
-
+        */
 		// 重设过滤器，只捕获华为802.1X认证设备发来的包（包括多播Request Identity / Request AVAILABLE）
-		sprintf(FilterStr, "(ether proto 0x888e) and (ether src host %02x:%02x:%02x:%02x:%02x:%02x)",
-			captured[6],captured[7],captured[8],captured[9],captured[10],captured[11]);
+		sprintf(FilterStr, "(ether proto 0x888e) and (ether src host %02x:%02x:%02x:%02x:%02x:%02x) and ((ether dst host %02x:%02x:%02x:%02x:%02x:%02x) or (ether dst host %02x:%02x:%02x:%02x:%02x:%02x))",
+			captured[6],captured[7],captured[8],captured[9],captured[10],captured[11],
+            MultcastAddr[0],MultcastAddr[1],MultcastAddr[2],MultcastAddr[3],MultcastAddr[4],MultcastAddr[5],
+            MAC[0],MAC[1],MAC[2],MAC[3],MAC[4],MAC[5]);
 		pcap_compile(adhandle, &fcode, FilterStr, 1, 0xff);
 		pcap_setfilter(adhandle, &fcode);
 
@@ -200,13 +208,13 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				 case IDENTITY:
 					DPRINTF("[%d] Server: Request Identity!\n", (EAP_ID)captured[19]);
 					GetIpFromDevice(ip, DeviceName);
-					SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName);
+                    SendResponseIdentity(adhandle, captured, ethhdr, ip, UserName, md5);
 					DPRINTF("[%d] Client: Response Identity.\n", (EAP_ID)captured[19]);
 					break;
 				 case AVAILABLE:
 					DPRINTF("[%d] Server: Request AVAILABLE!\n", (EAP_ID)captured[19]);
 					GetIpFromDevice(ip, DeviceName);
-					SendResponseAvailable(adhandle, captured, ethhdr, ip, UserName);
+					SendResponseAvailable(adhandle, captured, ethhdr, ip, UserName, md5);
 					DPRINTF("[%d] Client: Response AVAILABLE.\n", (EAP_ID)captured[19]);
 					break;
 				 case MD5:
@@ -261,10 +269,20 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				// 刷新IP地址
 				system("njit-RefreshIP");
 			}
+            else if ((EAP_Code)captured[18] == H3CDATA)
+			{
+                if (captured[23] == 0x2b)
+                {
+				    DPRINTF("[%d] Server: 3DES Encrypt Code.\n", captured[19]);
+                    DEStoMD5(md5, captured+27);
+				    DPRINTF("[%d] Client: 3DES Decrypted.\n", captured[19]);
+                }
+
+			}
 			else
 			{
 				DPRINTF("[%d] Server: (H3C data)\n", captured[19]);
-				// TODO: 这里没有处理华为自定义数据包 
+				// TODO: 这里没有处理华为自定义数据包
 			}
 		}
 	}
@@ -304,7 +322,6 @@ void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
 	uint8_t packet[18];
 
 	// Ethernet Header (14 Bytes)
-	memcpy(packet, BroadcastAddr, 6);
 	memcpy(packet+6, localmac,   6);
 	packet[12] = 0x88;
 	packet[13] = 0x8e;
@@ -316,7 +333,8 @@ void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
 
 	// 为了兼容不同院校的网络配置，这里发送两遍Start包
 	// 1、广播发送Strat包
-	pcap_sendpacket(handle, packet, sizeof(packet));
+	//memcpy(packet, BroadcastAddr, 6);
+	//pcap_sendpacket(handle, packet, sizeof(packet));
 	// 2、多播发送Strat包
 	memcpy(packet, MultcastAddr, 6);
 	pcap_sendpacket(handle, packet, sizeof(packet));
@@ -324,7 +342,7 @@ void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
 
 
 static
-void SendResponseAvailable(pcap_t *handle, const uint8_t request[], const uint8_t ethhdr[], const uint8_t ip[4], const char username[])
+void SendResponseAvailable(pcap_t *handle, const uint8_t request[], const uint8_t ethhdr[], const uint8_t ip[4], const char username[], const uint8_t md5[])
 {
 	int i;
 	uint16_t eaplen;
@@ -353,6 +371,12 @@ void SendResponseAvailable(pcap_t *handle, const uint8_t request[], const uint8_
 			// {
 				i = 23;
 				response[i++] = 0x00;// 上报是否使用代理
+
+                response[i++] = 0x16; //MD5认证
+                response[i++] = 0x20;
+                memcpy(response+i, md5, 32);
+                i += 32;
+
 				response[i++] = 0x15;	  // 上传IP地址
 				response[i++] = 0x04;	  //
 				memcpy(response+i, ip, 4);//
@@ -369,7 +393,7 @@ void SendResponseAvailable(pcap_t *handle, const uint8_t request[], const uint8_
 			// }
 		// }
 	// }
-	
+
 	// 补填前面留空的两处Length
 	eaplen = htons(i-18);
 	memcpy(response+16, &eaplen, sizeof(eaplen));
@@ -381,7 +405,7 @@ void SendResponseAvailable(pcap_t *handle, const uint8_t request[], const uint8_
 
 
 static
-void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[], const uint8_t ip[4], const char username[])
+void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[], const uint8_t ip[4], const char username[], const uint8_t md5[])
 {
 	uint8_t	response[128];
 	size_t i;
@@ -410,6 +434,16 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8
 			// Type-Data
 			// {
 				i = 23;
+                if (request[0] == MultcastAddr[0] &&
+                        request[1] == MultcastAddr[1] &&
+                        request[2] == MultcastAddr[2] &&
+                        request[3] == MultcastAddr[3])
+                {
+                    response[i++] = 0x16;
+                    response[i++] = 0x20;
+                    memcpy(response+i, md5, 32);
+                    i += 32;
+                }
 				response[i++] = 0x15;	  // 上传IP地址
 				response[i++] = 0x04;	  //
 				memcpy(response+i, ip, 4);//
@@ -427,7 +461,7 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8
 			// }
 		// }
 	// }
-	
+
 	// 补填前面留空的两处Length
 	eaplen = htons(i-18);
 	memcpy(response+16, &eaplen, sizeof(eaplen));
@@ -437,7 +471,6 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8
 	pcap_sendpacket(adhandle, response, i);
 	return;
 }
-
 
 static
 void SendResponseMD5(pcap_t *handle, const uint8_t request[], const uint8_t ethhdr[], const char username[], const char passwd[])
@@ -483,7 +516,7 @@ void SendResponseMD5(pcap_t *handle, const uint8_t request[], const uint8_t ethh
 static
 void SendLogoffPkt(pcap_t *handle, const uint8_t localmac[])
 {
-	uint8_t packet[18];
+	uint8_t packet[64];
 
 	// Ethernet Header (14 Bytes)
 	memcpy(packet, MultcastAddr, 6);
@@ -494,7 +527,8 @@ void SendLogoffPkt(pcap_t *handle, const uint8_t localmac[])
 	// EAPOL (4 Bytes)
 	packet[14] = 0x01;	// Version=1
 	packet[15] = 0x02;	// Type=Logoff
-	packet[16] = packet[17] =0x00;// Length=0x0000
+    memset(packet+16,0,48);
+	//packet[16] = packet[17] =0x00;// Length=0x0000
 
 	// 发包
 	pcap_sendpacket(handle, packet, sizeof(packet));
@@ -554,7 +588,7 @@ void FillWindowsVersionArea(uint8_t area[20])
 static
 void SendResponseNotification(pcap_t *handle, const uint8_t request[], const uint8_t ethhdr[])
 {
-	uint8_t	response[67];
+	uint8_t	response[60];
 
 	assert((EAP_Code)request[18] == REQUEST);
 	assert((EAP_Type)request[22] == NOTIFICATION);
@@ -567,7 +601,7 @@ void SendResponseNotification(pcap_t *handle, const uint8_t request[], const uin
 		response[14] = 0x1;	// 802.1X Version 1
 		response[15] = 0x0;	// Type=0 (EAP Packet)
 		response[16] = 0x00;	// Length
-		response[17] = 0x31;	//
+		response[17] = 0x1b;	//
 
 		// Extensible Authentication Protocol
 		// {
@@ -585,11 +619,13 @@ void SendResponseNotification(pcap_t *handle, const uint8_t request[], const uin
 		FillClientVersionArea(response+i);
 		i += 20;
 
+        // 不需要Windows版本号,最后16字节填0 for GDUT
+        memset(response+i, 0, 16);
 		// 最后2+20字节存储加密后的Windows操作系统版本号
-		response[i++] = 0x02; // type 0x02
-		response[i++] = 22;   // length
-		FillWindowsVersionArea(response+i);
-		i += 20;
+		//response[i++] = 0x02; // type 0x02
+		//response[i++] = 22;   // length
+		//FillWindowsVersionArea(response+i);
+		//i += 20;
 		// }
 	// }
 
