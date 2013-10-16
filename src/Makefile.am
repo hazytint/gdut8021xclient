@@ -12,6 +12,10 @@ client_SOURCES = \
 		debug.h \
 		decrypt.c \
 		$(NULL)
+sbin_SCRIPTS = \
+		njit-RefreshIP \
+		$(null)
+EXTRA_DIST = $(sbin_SCRIPTS)
 CCOPT = $(V_CCOPT)
 DEFS  = $(V_DEFS)
 INCLS = $(V_INCLS)
