@@ -5,15 +5,16 @@ sbin_PROGRAMS = \
 client_SOURCES = \
 		main.c \
 		auth.c \
-		ip.c   \
 		fillmd5-libcrypto.c \
 		njit8021xclient.c \
 		njit8021xclient.h \
 		debug.h \
-		decrypt.c \
+		md5-buildin/md5_one.c \
+		md5-buildin/md5_dgst.c \
+		md5-buildin/mem_clr.c \
 		$(NULL)
 sbin_SCRIPTS = \
-		njit-RefreshIP \
+		RefreshIP \
 		$(null)
 EXTRA_DIST = $(sbin_SCRIPTS)
 CCOPT = $(V_CCOPT)
@@ -22,5 +23,5 @@ INCLS = $(V_INCLS)
 client_CFLAGS = $(CCOPT) $(DEFS) $(INCLS)
 client_CFLAGS += $(libcrypto_CFLAGS)
 client_LDADD  = $(LBL_LIBS)
-client_LDADD += $(libcrypto_LIBS)
+#client_LDADD += $(libcrypto_LIBS)
 

@@ -7,7 +7,7 @@ if test "x$program_prefix" = "x" || test $program_prefix = "NONE" ; then
 fi
 AC_MSG_RESULT([$program_prefix])
 
-AM_INIT_AUTOMAKE([-Wall -Werror foreign])
+AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 AC_LBL_C_INIT_BEFORE_CC(V_CCOPT, V_INCLS)
 AC_PROG_CC
 AM_PROG_CC_C_O

@@ -1,0 +1,17 @@
+#!/bin/sh
+INTERFACE=${1:-eth0}
+if hash dhcpcd &> /dev/null; then
+  echo "dhcpcd $INTERFACE"
+  killall dhcpcd
+  dhcpcd $INTERFACE
+elif hash dhclient &> /dev/null; then
+  echo "dhclient $INTERFACE"
+  killall dhclient
+  dhclient -b $INTERFACE
+elif hash udhcpc &> /dev/null; then
+  echo "udhcpc $INTERFACE"
+  killall udhcpc
+  udhcpc -t 0 -i $INTERFACE -b
+else
+  echo "No DHCP client found!"
+fi
