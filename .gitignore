@@ -15,6 +15,6 @@
 *.o
 *.dirstamp
 *stamp-h1
-
+*.swp
 src/client
 src/conv/
