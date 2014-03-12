@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 /* 子函数声明 */
-int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char * DHCPScript);
+int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char * DHCPScript, uint8_t *ClientMAC);
 
 static struct option arglist[] = {
         {"help", no_argument, NULL, 'h'},
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 	char Password[32] = "";
 	char DeviceName[16] = "eth0";
 	char DHCPScript[128] = "";
-
+    uint8_t ClientMAC[6] = {0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
 	/* 检查当前是否具有root权限 */
 	if (getuid() != 0) {
 		fprintf(stderr, "抱歉，运行本客户端程序需要root权限\n");
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
     }
 
 	/* 调用子函数完成802.1X认证 */
-	Authentication(UserName, Password, DeviceName, DHCPScript);
+	Authentication(UserName, Password, DeviceName, DHCPScript,ClientMAC);
 
 	return (EXIT_SUCCESS);
 }

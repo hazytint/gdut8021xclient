@@ -3,7 +3,7 @@
  * 注：核心函数为Authentication()，由该函数执行801.1X认证
  */
 
-int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript);
+//int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript,const uint8_t *ClientMAC);
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,8 +37,7 @@ static void SendLogoffPkt(pcap_t *adhandle, const uint8_t mac[]);
 static void SendResponseIdentity(pcap_t *adhandle,
 			const uint8_t request[],
 			const uint8_t ethhdr[],
-            const char username[],
-            const uint8_t md5[]);
+            const char username[]);
 static void SendResponseMD5(pcap_t *adhandle,
 		const uint8_t request[],
 		const uint8_t ethhdr[],
@@ -58,12 +57,12 @@ extern void FillMD5Area(uint8_t digest[],
  * 该函数将不断循环，应答802.1X认证会话，直到遇到错误后才退出
  */
 
-int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript)
+int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript,const uint8_t *ClientMAC)
 {
 	char	errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t	*adhandle; // adapter handle
-	uint8_t	MAC[6];
-	char	FilterStr[100];
+	uint8_t	MAC[6]; // 本机地址
+	char	FilterStr[250];
 	struct bpf_program	fcode;
 
 	// NOTE: 这里没有检查网线是否已插好,网线插口可能接触不良
@@ -75,11 +74,14 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		exit(-1);
 	}
     pcap_set_promisc(adhandle,1);
-    pcap_activate(adhandle);
+    pcap_set_snaplen(adhandle,65536);
     pcap_setdirection(adhandle,PCAP_D_IN);
+    pcap_set_timeout(adhandle,1000);
+  	pcap_activate(adhandle);
 
 	/* 查询本机MAC地址 */
-	GetMacFromDevice(MAC, DeviceName);
+	//GetMacFromDevice(MAC, DeviceName);
+	memcpy(MAC,ClientMAC,6);
 
 	/*
 	 * 设置过滤器：
@@ -91,23 +93,21 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 	pcap_setfilter(adhandle, &fcode);
 
 
+
 	START_AUTHENTICATION:
 	{
 		int retcode;
 		struct pcap_pkthdr *header;
 		const uint8_t	*captured;
 		uint8_t	ethhdr[14]={0}; // ethernet header
-        uint8_t md5[32]={0}; // 心跳包3DES解密进行两次md5
 
 		/* 主动发起认证会话 */
 		DPRINTF("[   ] Client: Start.\n");
-
 		/* 等待认证服务器的回应 */
 		bool serverIsFound = false;
 		while (!serverIsFound)
 		{
-            SendStartPkt(adhandle, MAC);
-            sleep(1);
+			SendStartPkt(adhandle, MAC);
 			retcode = pcap_next_ex(adhandle, &header, &captured);
 			if (retcode==1 && (EAP_Code)captured[18]==REQUEST && (EAP_Type)captured[22] == IDENTITY) {
 				serverIsFound = true;
@@ -115,6 +115,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 			else
 			{
 				DPRINTF(".");
+				sleep(1);
 				//SendStartPkt(adhandle, MAC);
 				// NOTE: 这里没有检查网线是否接触不良或已被拔下
 			}
@@ -131,7 +132,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		if ((EAP_Type)captured[22] == IDENTITY)
 		{	// 通常情况会收到包Request Identity，应回答Response Identity
 			DPRINTF("[%3d] Server: Request Identity!\n", captured[19]);
-			SendResponseIdentity(adhandle, captured, ethhdr, UserName, md5);
+			SendResponseIdentity(adhandle, captured, ethhdr, UserName);
 			DPRINTF("[%3d] Client: Response Identity.\n", (EAP_ID)captured[19]);
 		}
 
@@ -161,7 +162,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 				{
 				 case IDENTITY:
 					DPRINTF("[%3d] Server: Request Identity!\n", (EAP_ID)captured[19]);
-                    	SendResponseIdentity(adhandle, captured, ethhdr, UserName, md5);
+                    SendResponseIdentity(adhandle, captured, ethhdr, UserName);
 					DPRINTF("[%3d] Client: Response Identity.\n", (EAP_ID)captured[19]);
 					break;
 				 case MD5:
@@ -225,7 +226,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 }
 
 
-
+/*
 static
 void GetMacFromDevice(uint8_t mac[6], const char *devicename)
 {
@@ -249,7 +250,7 @@ void GetMacFromDevice(uint8_t mac[6], const char *devicename)
 	assert(err != -1);
 	return;
 }
-
+*/
 
 static
 void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
@@ -274,7 +275,7 @@ void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
 
 
 static
-void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[], const char username[], const uint8_t md5[])
+void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8_t ethhdr[], const char username[])
 {
 	uint8_t	response[128];
 	size_t packetlen;
