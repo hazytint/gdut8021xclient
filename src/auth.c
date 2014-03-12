@@ -80,8 +80,8 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
   	pcap_activate(adhandle);
 
 	/* 查询本机MAC地址 */
-	//GetMacFromDevice(MAC, DeviceName);
-	memcpy(MAC,ClientMAC,6);
+	GetMacFromDevice(MAC, DeviceName);
+	//memcpy(MAC,ClientMAC,6);
 
 	/*
 	 * 设置过滤器：
@@ -226,7 +226,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 }
 
 
-/*
+
 static
 void GetMacFromDevice(uint8_t mac[6], const char *devicename)
 {
@@ -250,7 +250,7 @@ void GetMacFromDevice(uint8_t mac[6], const char *devicename)
 	assert(err != -1);
 	return;
 }
-*/
+
 
 static
 void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
