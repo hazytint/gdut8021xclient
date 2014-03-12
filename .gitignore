@@ -18,3 +18,4 @@
 *.swp
 src/client
 src/conv/
+*.DS_Store
