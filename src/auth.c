@@ -74,7 +74,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 		exit(-1);
 	}
     pcap_set_promisc(adhandle,1);
-    pcap_set_snaplen(adhandle,65536);
+    pcap_set_snaplen(adhandle,512);
     pcap_setdirection(adhandle,PCAP_D_IN);
     pcap_set_timeout(adhandle,1000);
   	pcap_activate(adhandle);
