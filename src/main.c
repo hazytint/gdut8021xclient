@@ -8,6 +8,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 
 /* 子函数声明 */
 int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char * DHCPScript, uint8_t *ClientMAC);
