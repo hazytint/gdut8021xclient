@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <getopt.h>
 #include <string.h>
 #include <unistd.h>
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
                 break;
             case 's':
                 strncpy(DHCPScript, optarg, sizeof(DHCPScript));
-                break;      
+                break;
             default:
                 break;
         }
