@@ -21,7 +21,7 @@ CCOPT = $(V_CCOPT)
 DEFS  = $(V_DEFS)
 INCLS = $(V_INCLS)
 client_CFLAGS = $(CCOPT) $(DEFS) $(INCLS)
-client_CFLAGS += $(libcrypto_CFLAGS)
+client_CFLAGS += $(libcrypto_CFLAGS) -I/usr/local/opt/openssl/include
 client_LDADD  = $(LBL_LIBS)
 #client_LDADD += $(libcrypto_LIBS)
 

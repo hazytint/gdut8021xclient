@@ -3,7 +3,7 @@
  * 注：核心函数为Authentication()，由该函数执行801.1X认证
  */
 
-//int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript,const uint8_t *ClientMAC);
+//int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript);
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +21,8 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if_dl.h>
 
 #include "debug.h"
 
@@ -57,7 +59,7 @@ extern void FillMD5Area(uint8_t digest[],
  * 该函数将不断循环，应答802.1X认证会话，直到遇到错误后才退出
  */
 
-int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript,const uint8_t *ClientMAC)
+int Authentication(const char *UserName, const char *Password, const char *DeviceName, const char *DHCPScript)
 {
 	char	errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t	*adhandle; // adapter handle
@@ -80,8 +82,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
   	pcap_activate(adhandle);
 
 	/* 查询本机MAC地址 */
-	//GetMacFromDevice(MAC, DeviceName);
-	memcpy(MAC,ClientMAC,6);
+	GetMacFromDevice(MAC, DeviceName);
 
 	/*
 	 * 设置过滤器：
@@ -111,7 +112,7 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 			retcode = pcap_next_ex(adhandle, &header, &captured);
 			if (retcode==1 && (EAP_Code)captured[18]==REQUEST && (EAP_Type)captured[22] == IDENTITY) {
 				serverIsFound = true;
-			}	
+			}
 			else
 			{
 				DPRINTF(".");
@@ -226,31 +227,29 @@ int Authentication(const char *UserName, const char *Password, const char *Devic
 }
 
 
-/*
 static
 void GetMacFromDevice(uint8_t mac[6], const char *devicename)
 {
-
-	int	fd;
-	int	err;
-	struct ifreq	ifr;
-
-	fd = socket(PF_PACKET, SOCK_RAW, htons(0x0806));
-	assert(fd != -1);
+	struct ifaddrs *ifa;
+    int err;
+    err = getifaddrs(&ifa);
+	assert(err != -1);
 
 	assert(strlen(devicename) < IFNAMSIZ);
-	strncpy(ifr.ifr_name, devicename, IFNAMSIZ);
-	ifr.ifr_addr.sa_family = AF_INET;
 
-	err = ioctl(fd, SIOCGIFHWADDR, &ifr);
-	assert(err != -1);
-	memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
-
-	err = close(fd);
-	assert(err != -1);
-	return;
+    while(ifa) {
+        if (strcmp(ifa->ifa_name, devicename) == 0) {
+            if (ifa->ifa_addr->sa_family == AF_LINK) {
+                struct sockaddr_dl *sdl = (struct sockaddr_dl *)ifa->ifa_addr;
+                uint8_t *m = (uint8_t *)LLADDR(sdl);
+                memcpy(mac, m, 6);
+                break;
+            }
+        }
+        ifa = ifa->ifa_next;
+    }
+    assert(ifa != NULL);
 }
-*/
 
 static
 void SendStartPkt(pcap_t *handle, const uint8_t localmac[])
@@ -283,7 +282,7 @@ void SendResponseIdentity(pcap_t *adhandle, const uint8_t request[], const uint8
 	int usernamelen;
 
 	assert((EAP_Code)request[18] == REQUEST);
-	assert((EAP_Type)request[22] == IDENTITY); 
+	assert((EAP_Type)request[22] == IDENTITY);
 
     usernamelen = strlen(username); //末尾添加用户名
     packetlen = 55 + usernamelen;
